@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <stdio.h>
 
 #define SORT_THRESHOLD      4//40
 
@@ -12,6 +13,7 @@ typedef struct _sortParams {
     int left;
     int right;
     struct _sortParams* next;
+    int workerid;
 } SortParams;
 
 typedef struct _task_queue {
@@ -26,46 +28,49 @@ typedef struct _worker_status {
 
 static pthread_cond_t workers;
 static pthread_cond_t manager;
-static pthread_mutex_t m_maximumThreads, m_queueTask, m_workerstat;
+static pthread_mutex_t m_maximumThreads, m_queueTask, m_workerstat, m_managerwait;
 static TaskQueue *tasks;
 static int *threadid;
 static int maximumThreads;  /* maximum # of threads to be used */
 static WorkerStatus* workerstat;
+pthread_t *threads;
 
 
-static void initTaskQueue(TaskQueue *tasks) {
+static void initTaskQueue() {
 	tasks = (TaskQueue*) malloc(sizeof(TaskQueue));
 	tasks->head = tasks->tail = NULL;
 	return;
 }
 
-static void insertIntoTasks(TaskQueue *tasks, SortParams* new) {
-	if(!tasks->tail) {
-		tasks->tail = tasks->head = new;
+static void insertIntoTasks(SortParams* new) {
+	if(!tasks->head) {
+		tasks->head = new;
+		tasks->head->next = NULL;
 		return;
 	}
-	tasks->tail->next = new;
-	new->next = NULL;
+	new->next = tasks->head->next;
+	tasks->head->next = new;
 	return;
 }
 
 static SortParams *createTaskNode( int left, int right, char** array) {
 	SortParams *temp = (SortParams*) malloc(sizeof(SortParams));
+	temp->array = array;
 	temp->left = left;
 	temp->right = right;
 	temp->next = NULL;
 	return temp;
 }
 
-static SortParams *getTask(TaskQueue *tasks) {
+static SortParams *getTask() {
 	if (!tasks->head) return NULL;
 	SortParams *temp = tasks->head;
 	tasks->head = temp->next;
 	return temp;
 }
 
-static bool isQueueEmpty(TaskQueue *tasks) {
-	if(tasks->head) return true;
+static bool isQueueEmpty() {
+	if(!tasks->head) return true;
 	else return false;
 }
 
@@ -73,7 +78,7 @@ static bool isQueueEmpty(TaskQueue *tasks) {
 /* n-squared, is faster at sorting short lists than quick sort,   */
 /* due to its lack of recursive procedure call overhead.          */
 
-static void insertSort(char** array, int left, int right) {
+static void insertSort(char** array, int left, int right, SortParams* params) {
     int i, j;
     for (i = left + 1; i <= right; i++) {
         char* pivot = array[i];
@@ -84,8 +89,12 @@ static void insertSort(char** array, int left, int right) {
         }
         array[j + 1] = pivot;
     }
-    if(left + 1 <= right)
+    pthread_mutex_lock(&m_workerstat);
+    workerstat[params->workerid].isWorking = false;
+    pthread_mutex_unlock(&m_workerstat);
+    if(left + 1 <= right) {
     	pthread_cond_signal(&manager);
+    }
 }
 
 /* Recursive quick sort, but with a provision to use */
@@ -127,19 +136,25 @@ static void quickSort(void* p) {
 
 	SortParams *first = createTaskNode(left, j, array);
 	pthread_mutex_lock(&m_queueTask);
-	insertIntoTasks(tasks, first);
+	insertIntoTasks(first);
+	assert(!isQueueEmpty());
 	pthread_mutex_unlock(&m_queueTask);
 	pthread_cond_signal(&workers);
 
 	SortParams *second = createTaskNode(i, right, array);
 	pthread_mutex_lock(&m_queueTask);
-	insertIntoTasks(tasks, second);
+	insertIntoTasks(second);
+	assert(!isQueueEmpty());
 	pthread_mutex_unlock(&m_queueTask);
 	pthread_cond_signal(&workers);
 
+	pthread_mutex_lock(&m_workerstat);
+	workerstat[params->workerid].isWorking = false;
+	pthread_mutex_unlock(&m_workerstat);
+
 	free(params);
 
-    } else insertSort(array,i,j);           /* for a small range use insert sort */
+} else insertSort(array,i,j, params);           /* for a small range use insert sort */
 }
 
 
@@ -153,29 +168,38 @@ void setSortThreads(int count) {
 /* user callable sort procedure, sorts array of count strings, beginning at address array */
 
 static void worker (void *p) {
+	int id = *((int*) p);
 	while (true) {
 		pthread_mutex_lock(&m_queueTask);
-		if (isQueueEmpty(tasks)) {
+		if (isQueueEmpty()) {
 			pthread_cond_wait(&workers, &m_queueTask);
 		}
-		assert(!isQueueEmpty(tasks));
-		void* temp = (void*) getTask(tasks);
-		pthread_mutex_unlock(&m_queueTask);
-		quickSort(temp);
+		if (!isQueueEmpty()){
+			SortParams *temp = getTask();
+			pthread_mutex_unlock(&m_queueTask);
+			temp->workerid = id;
+			pthread_mutex_lock(&m_workerstat);
+			workerstat[id].isWorking = true;
+			pthread_mutex_unlock(&m_workerstat);
+			quickSort(temp);
+		}
+		else pthread_mutex_unlock(&m_queueTask);
 	}
 }
 
 static void dispatch(){
-	pthread_t threads[maximumThreads];
+	threads = (pthread_t*) malloc(sizeof(pthread_t) * maximumThreads);
 
-	for (int i = 0; i < maximumThreads; i++ )
+	for (int i = 0; i < maximumThreads; i++ ) {
+		threadid[i] = i;
 		pthread_create(&threads[i], NULL, (void*) worker, &threadid[i]);
+	}
 	return;
 }
 
-static bool areWorkersDone(WorkerStatus *ws) {
+static bool areWorkersDone() {
 	for (int i = 0; i < maximumThreads; i++) {
-		if (ws[i].isWorking) return false;
+		if (workerstat[i].isWorking) return false;
 	}
 	return true;
 }
@@ -184,16 +208,25 @@ static void releaseMem() {
 	free(workerstat);
 	free(tasks);
 	free(threadid);
+	free(threads);
+}
+
+static void cancelThreads() {
+	for (int i = 0; i < maximumThreads; i++)
+		pthread_cancel(threads[i]);
+	return;
 }
 
 static void manageWorkers() {
 	while (true) {
+		pthread_mutex_lock(&m_managerwait);
+		pthread_cond_wait(&manager, &m_managerwait);
 		pthread_mutex_lock(&m_workerstat);
-		pthread_cond_wait(&manager, &m_queueTask);
-		if (areWorkersDone(workerstat)) {
+		if (areWorkersDone()) {
 			pthread_mutex_unlock(&m_workerstat);
+			cancelThreads();
 			releaseMem();
-			exit(0);
+			return;
 		}
 		pthread_mutex_unlock(&m_workerstat);
 
@@ -201,11 +234,11 @@ static void manageWorkers() {
 
 }
 
-static void initWorkerStatus(WorkerStatus *ws) {
-	ws = (WorkerStatus*) malloc(sizeof(WorkerStatus) * maximumThreads);
+static void initWorkerStatus() {
+	workerstat = (WorkerStatus*) malloc(sizeof(WorkerStatus) * maximumThreads);
 	for (int i = 0; i < maximumThreads; i++) {
-		ws[i].id = i;
-		ws[i].isWorking = false;
+		workerstat[i].id = i;
+		workerstat[i].isWorking = false;
 	}
 }
 
@@ -222,13 +255,17 @@ void sortThreaded(char** array, unsigned int count) {
 
     SortParams *parameters = createTaskNode( 0, count-1, array );
 
-    initTaskQueue(tasks);
+    initTaskQueue();
 
-    insertIntoTasks(tasks, parameters);
+    insertIntoTasks(parameters);
 
-    initWorkerStatus(workerstat);
+    assert(!isQueueEmpty());
+
+    initWorkerStatus();
 
     dispatch();
+
+    pthread_cond_signal(&workers);
 
     manageWorkers();
 }
