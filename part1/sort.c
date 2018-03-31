@@ -3,6 +3,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 #define SORT_THRESHOLD      40
 
@@ -10,6 +11,7 @@ typedef struct _sortParams {
     char** array;
     int left;
     int right;
+    int threadid;
 } SortParams;
 
 static pthread_mutex_t m_maximumThreads;
@@ -38,6 +40,7 @@ static void insertSort(char** array, int left, int right) {
 
 static void quickSort(void* p) {
     SortParams* params = (SortParams*) p;
+    printf("thread %d is sorting\n", params->threadid);
     char** array = params->array;
     int left = params->left;
     int right = params->right;
@@ -74,19 +77,19 @@ static void quickSort(void* p) {
 	SortParams *threadFirst;
 	pthread_t leftthread;
 	bool isCreated = false;
-	if(maximumThreads-1 >= 0) {
+	if(maximumThreads - 1 > 0) {
 	    pthread_mutex_unlock(&m_maximumThreads);
 	    isCreated = true;
 	    maximumThreads--;
 	    threadFirst = (SortParams*) malloc(sizeof(SortParams));
-	    threadFirst->array = array;
+	    threadFirst->array = array; threadFirst->threadid = maximumThreads + 1;
 	    threadFirst->left = left; threadFirst->right = j;
-	    printf("new thread left\n");
+	    //printf("new thread left\n");
 	    pthread_create(&leftthread, NULL, (void*) quickSort, threadFirst);
 	}
 	else {
 	    SortParams first;  first.array = array; first.left = left; first.right = j;
-	    printf("no new\n");
+	    //printf("no new\n");
  	    quickSort(&first);                  /* sort the left partition	*/
 	}
 
@@ -116,6 +119,7 @@ void sortThreaded(char** array, unsigned int count) {
 
     SortParams parameters;
     parameters.array = array; parameters.left = 0; parameters.right = count - 1;
+    parameters.threadid = -1;
 
     quickSort(&parameters);
 }
