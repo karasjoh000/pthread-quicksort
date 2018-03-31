@@ -190,10 +190,15 @@ static void worker (void *p) {
 			pthread_cond_wait(&workers, &m_stackTask);
 		}
 		if (!isStackEmpty()){                       // if stack not empty start working.
+
 			SortParams *temp = getTask();
-			pthread_mutex_unlock(&m_stackTask);
+
+			pthread_mutex_lock(&m_workerstat);  // note that stack was locked first, see manageWorkers.
+			pthread_mutex_unlock(&m_stackTask); // lock status before unlocking stack because parent might get a hold of it.
+							    // which can result in parent cancelling threads before they are finished.
+
+
 			temp->workerid = id;                // set the worker id to later set working flag to false
-			pthread_mutex_lock(&m_workerstat);
 			workerstat[id].isWorking = true;    // set to true before going to sort.
 			pthread_mutex_unlock(&m_workerstat);
 			quickSort(temp);
@@ -215,11 +220,12 @@ static void dispatch(){
 }
 
 static bool areWorkersDone() {
+	if (!isStackEmpty()) return false;
 	for (int i = 0; i < maximumThreads; i++) {          // when manager is signaled,
 		if (workerstat[i].isWorking) return false;  // it checks if all workers are
 	}						    // are idle (if not finished,
 	return true;                                        // at least one worker will be
-}							    // sorting).
+}							    // sorting) and if stack is empty.
 
 static void releaseMem() {
 	free(workerstat);
@@ -239,14 +245,20 @@ static void manageWorkers() {
 		pthread_mutex_lock(&m_managerwait);
 		pthread_cond_wait(&manager, &m_managerwait);
 
-		pthread_mutex_lock(&m_workerstat);
+		pthread_mutex_lock(&m_stackTask); // note here that stack locked first
+		pthread_mutex_lock(&m_workerstat);// then workerstat. Same in worker routine.
+                                                  // if not consistent can result in dead lock.
+
 		if (areWorkersDone()) {
 			cancelThreads();
 			releaseMem();
 			return;
 		}
+
+		pthread_mutex_unlock(&m_stackTask);
 		pthread_mutex_unlock(&m_workerstat);
-		pthread_mutex_unlock(&m_managerwait);
+		pthread_mutex_unlock(&m_managerwait); // when unlocked, worker will lock and let others singal.
+		                                      // see insert sort.
 	}
 
 }
