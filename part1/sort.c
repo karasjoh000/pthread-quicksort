@@ -40,7 +40,6 @@ static void insertSort(char** array, int left, int right) {
 
 static void quickSort(void* p) {
     SortParams* params = (SortParams*) p;
-    printf("thread %d is sorting\n", params->threadid);
     char** array = params->array;
     int left = params->left;
     int right = params->right;
@@ -78,18 +77,19 @@ static void quickSort(void* p) {
 	pthread_t leftthread;
 	bool isCreated = false;
 	if(maximumThreads - 1 > 0) {
+	    maximumThreads--;
+	    threadFirst = (SortParams*) malloc(sizeof(SortParams));
+	    threadFirst->threadid = maximumThreads;
 	    pthread_mutex_unlock(&m_maximumThreads);
 	    isCreated = true;
-	    maximumThreads--;
 	    threadFirst = (SortParams*) malloc(sizeof(SortParams));
 	    threadFirst->array = array; threadFirst->threadid = maximumThreads + 1;
 	    threadFirst->left = left; threadFirst->right = j;
-	    //printf("new thread left\n");
 	    pthread_create(&leftthread, NULL, (void*) quickSort, threadFirst);
 	}
 	else {
+	    pthread_mutex_unlock(&m_maximumThreads);
 	    SortParams first;  first.array = array; first.left = left; first.right = j;
-	    //printf("no new\n");
  	    quickSort(&first);                  /* sort the left partition	*/
 	}
 
@@ -102,7 +102,8 @@ static void quickSort(void* p) {
 	}
 
 
-    } else insertSort(array,i,j);           /* for a small range use insert sort */
+    } else insertSort(array,i,j);
+             /* for a small range use insert sort */
 }
 
 /* user interface routine to set the number of threads sortT is permitted to use */
@@ -119,7 +120,6 @@ void sortThreaded(char** array, unsigned int count) {
 
     SortParams parameters;
     parameters.array = array; parameters.left = 0; parameters.right = count - 1;
-    parameters.threadid = -1;
 
     quickSort(&parameters);
 }
