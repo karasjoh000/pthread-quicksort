@@ -73,10 +73,10 @@ static void quickSort(void* p) {
         }
 
 	pthread_mutex_lock(&m_maximumThreads);
-	SortParams *threadFirst;
-	pthread_t leftthread;
-	bool isCreated = false;
-	if(maximumThreads - 1 > 0) {
+	SortParams *threadFirst;      // used to store sorting details.
+	pthread_t leftthread;         // thread that will sort the left side.
+	bool isCreated = false;       // used to determine if the thread was created.
+	if(maximumThreads - 1 > 0) {  // if limit is not reached, create new thread.
 	    maximumThreads--;
 	    threadFirst = (SortParams*) malloc(sizeof(SortParams));
 	    threadFirst->threadid = maximumThreads;
@@ -85,9 +85,9 @@ static void quickSort(void* p) {
 	    threadFirst = (SortParams*) malloc(sizeof(SortParams));
 	    threadFirst->array = array; threadFirst->threadid = maximumThreads + 1;
 	    threadFirst->left = left; threadFirst->right = j;
-	    pthread_create(&leftthread, NULL, (void*) quickSort, threadFirst);
+	    pthread_create(&leftthread, NULL, (void*) quickSort, threadFirst); // pass thread to sorting routine.
 	}
-	else {
+	else {  // if limit was reached then use current thread to sort left side.
 	    pthread_mutex_unlock(&m_maximumThreads);
 	    SortParams first;  first.array = array; first.left = left; first.right = j;
  	    quickSort(&first);                  /* sort the left partition	*/
@@ -96,7 +96,7 @@ static void quickSort(void* p) {
 	SortParams second; second.array = array; second.left = i; second.right = right;
 	quickSort(&second);                 /* sort the right partition */
 
-	if (isCreated) {
+	if (isCreated) {  // if thread was created, wait for it to finish then release memory.  
 		pthread_join(leftthread, NULL);
 		free(threadFirst);
 	}
@@ -116,7 +116,7 @@ void setSortThreads(int count) {
 
 void sortThreaded(char** array, unsigned int count) {
 
-    pthread_mutex_init(&m_maximumThreads, NULL);
+    pthread_mutex_init(&m_maximumThreads, NULL);  // to ensure one thread access at a time.
 
     SortParams parameters;
     parameters.array = array; parameters.left = 0; parameters.right = count - 1;
