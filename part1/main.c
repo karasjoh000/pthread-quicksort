@@ -5,9 +5,9 @@
 
 #define SIZE 3251
 
-void getbuffer(char **array, int size) {
+void getbuffer( char **array, int size ) {
 	for ( int i = 0; i < size; i++ )
-		array[i] = (char*) malloc(sizeof(char)*500);
+		array[i] = ( char* ) malloc( sizeof( char ) * 500 );
 	return;
 
 }
@@ -15,27 +15,27 @@ void getbuffer(char **array, int size) {
 int main ( int argc, char** argv ) {
 
 	char *buffer[SIZE];
-	getbuffer(buffer, SIZE);
+	getbuffer( buffer, SIZE );
 	char unparsed[500];
 
-	FILE *fp = fopen(argv[1], "r+");
+	FILE *fp = fopen( argv[1], "r+" );
 
 	int count = 0;
 
 
-	while (count < SIZE && fgets(unparsed, 500, fp) > 0) {
-		sscanf(unparsed, "%s\n", buffer[count]);
+	while ( count < SIZE && fgets( unparsed, 500, fp ) > 0 ) {
+		sscanf( unparsed, "%s\n", buffer[count] );
 		count++;
 	}
 
-	fclose(fp);
+	fclose( fp );
 
 
-	setSortThreads(30);
+	setSortThreads( 30 );
 	sortThreaded( buffer, count );
 
-	for (int i = 0; i < SIZE; i++ ) {
-		printf("%s\n", buffer[i]);
+	for ( int i = 0; i < SIZE; i++ ) {
+		printf( "%s\n", buffer[i] );
 	}
 
 
