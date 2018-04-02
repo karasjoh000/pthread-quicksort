@@ -1,3 +1,14 @@
+
+/*
+   John Karasev
+   CS 360 Systems Programming
+   WSUV Spring 2018
+   -----------------------------------------------------
+   Assignment #8:
+   Quicksort using multiple threads.
+*/
+
+
 #include "sort.h"
 #include <stdlib.h>
 #include <string.h>
@@ -96,7 +107,7 @@ static void quickSort(void* p) {
 	SortParams second; second.array = array; second.left = i; second.right = right;
 	quickSort(&second);                 /* sort the right partition */
 
-	if (isCreated) {  // if thread was created, wait for it to finish then release memory.  
+	if (isCreated) {  // if thread was created, wait for it to finish then release memory.
 		pthread_join(leftthread, NULL);
 		free(threadFirst);
 	}
