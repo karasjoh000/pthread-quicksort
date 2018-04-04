@@ -95,14 +95,12 @@ static void quickSort( void* p ) {
 		pthread_t leftthread;         // thread that will sort the left side.
 		bool isCreated = false;       // used to determine if the thread was created.
 		if( maximumThreads - 1 > 0 ) { // if limit is not reached, create new thread.
-			maximumThreads--;
 			threadFirst = ( SortParams* ) malloc( sizeof( SortParams ) );
 			threadFirst->threadid = maximumThreads;
+			maximumThreads--;
 			pthread_mutex_unlock( &m_maximumThreads );
 			isCreated = true;
-			threadFirst = ( SortParams* ) malloc( sizeof( SortParams ) );
 			threadFirst->array = array;
-			threadFirst->threadid = maximumThreads + 1;
 			threadFirst->left = left;
 			threadFirst->right = j;
 			pthread_create( &leftthread, NULL, ( void* ) quickSort, threadFirst ); // pass thread to sorting routine.
